@@ -45,10 +45,6 @@ module Bundler
 
     def remote!; end
 
-    def pre_download(_spec)
-      # No-op for sources that don't download gems (path, git, metadata)
-    end
-
     def add_dependency_names(names)
       @dependency_names = Array(dependency_names) | Array(names)
     end
