@@ -320,6 +320,15 @@ module Bundler
         @allow_remote && api_fetchers.any?
       end
 
+      # Downloads the gem file for the given spec to the cache without
+      # installing it. Called during the pre-download phase to decouple
+      # downloading from installation, allowing all gems to be fetched
+      # in parallel before installation begins.
+      def pre_download(spec)
+        return if installed?(spec)
+        fetch_gem_if_possible(spec)
+      end
+
       protected
 
       def remote_names
