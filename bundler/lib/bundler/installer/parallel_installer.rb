@@ -46,6 +46,10 @@ module Bundler
         dependencies.all? {|d| installed_specs.include? d.name }
       end
 
+      def has_extensions?
+        @spec.extensions.any?
+      end
+
       # Represents only the non-development dependencies, the ones that are
       # itself and are in the total list.
       def dependencies
@@ -192,11 +196,11 @@ module Bundler
         installed_specs[spec.name] = true
       end
 
-      @specs.each do |spec|
-        if spec.ready_to_enqueue? && spec.dependencies_installed?(installed_specs)
-          spec.state = :enqueued
-          worker_pool.enq spec
-        end
+      ready = @specs.select {|s| s.ready_to_enqueue? && s.dependencies_installed?(installed_specs) }
+      ready.sort_by! {|s| s.has_extensions? ? 0 : 1 }
+      ready.each do |spec|
+        spec.state = :enqueued
+        worker_pool.enq spec
       end
     end
   end
