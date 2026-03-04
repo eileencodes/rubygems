@@ -207,20 +207,14 @@ module Bundler
       remote_specs = specs.select(&:remote)
       return if remote_specs.empty?
 
-      if jobs > 1
-        worker = Worker.new(jobs, "Downloader", lambda {|spec, _worker_num|
-          spec.source.pre_download(spec)
-          spec
-        })
-        begin
-          remote_specs.each {|s| worker.enq(s) }
-          remote_specs.size.times { worker.deq }
-        ensure
-          worker.stop
-        end
-      else
-        remote_specs.each {|s| s.source.pre_download(s) }
-      end
+      worker = Worker.new(jobs, "Downloader", lambda {|spec, _worker_num|
+        spec.source.pre_download(spec)
+        spec
+      })
+      remote_specs.each {|s| worker.enq(s) }
+      remote_specs.size.times { worker.deq }
+    ensure
+      worker&.stop
     end
 
     def installation_parallelization
