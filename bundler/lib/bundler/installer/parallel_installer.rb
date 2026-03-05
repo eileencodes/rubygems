@@ -42,8 +42,22 @@ module Bundler
 
       # Checks installed dependencies against spec's dependencies to make
       # sure needed dependencies have been installed.
+      #
+      # Pure Ruby gems (no native extensions) don't need their dependencies
+      # installed first — installation just extracts files and writes a
+      # gemspec, no code from the gem or its deps runs. Skipping the check
+      # for these gems allows them to install in parallel without waiting
+      # on dependency chains.
+      #
+      # Gems with native extensions keep strict ordering because their
+      # extconf.rb may need to find headers or libraries from dependencies.
       def dependencies_installed?(installed_specs)
+        return true unless has_extensions?
         dependencies.all? {|d| installed_specs.include? d.name }
+      end
+
+      def has_extensions?
+        @spec.extensions.any?
       end
 
       # Represents only the non-development dependencies, the ones that are
