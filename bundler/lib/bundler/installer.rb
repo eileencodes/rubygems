@@ -191,8 +191,7 @@ module Bundler
       local = options[:local] || options[:"prefer-local"]
       jobs = installation_parallelization
 
-      pre_download_gems(@definition.specs, jobs)
-      pre_unpack_gems(@definition.specs, jobs)
+      pre_download_and_unpack_gems(@definition.specs, jobs)
 
       spec_installations = ParallelInstaller.call(self, @definition.specs, jobs, standalone, force, local: local)
       spec_installations.each do |installation|
@@ -200,33 +199,17 @@ module Bundler
       end
     end
 
-    # Downloads all remote gems in parallel before installation begins.
-    # This decouples downloading from installation so that network I/O
-    # doesn't block worker threads that are waiting on dependency ordering
-    # during the install phase.
-    def pre_download_gems(specs, jobs)
+    # Downloads and extracts all remote gems in parallel before
+    # installation begins. Each worker downloads a gem and immediately
+    # unpacks it, so download and extraction happen concurrently
+    # across gems. The install phase then only needs to handle
+    # extension compilation and finalization in dependency order.
+    def pre_download_and_unpack_gems(specs, jobs)
       remote_specs = specs.select(&:remote)
       return if remote_specs.empty?
 
       worker = Worker.new(jobs, "Downloader", lambda {|spec, _worker_num|
         spec.source.pre_download(spec)
-        spec
-      })
-      remote_specs.each {|s| worker.enq(s) }
-      remote_specs.size.times { worker.deq }
-    ensure
-      worker&.stop
-    end
-
-    # Extracts all remote gems in parallel before installation begins.
-    # This decouples extraction from compilation/finalization so that
-    # file I/O doesn't block workers waiting on dependency ordering
-    # during the install phase.
-    def pre_unpack_gems(specs, jobs)
-      remote_specs = specs.select(&:remote)
-      return if remote_specs.empty?
-
-      worker = Worker.new(jobs, "Unpacker", lambda {|spec, _worker_num|
         spec.source.pre_unpack(spec)
         spec
       })
