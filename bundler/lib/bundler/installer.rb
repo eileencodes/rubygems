@@ -191,30 +191,10 @@ module Bundler
       local = options[:local] || options[:"prefer-local"]
       jobs = installation_parallelization
 
-      pre_download_gems(@definition.specs, jobs)
-
       spec_installations = ParallelInstaller.call(self, @definition.specs, jobs, standalone, force, local: local)
       spec_installations.each do |installation|
         post_install_messages[installation.name] = installation.post_install_message if installation.has_post_install_message?
       end
-    end
-
-    # Downloads all remote gems in parallel before installation begins.
-    # This decouples downloading from installation so that network I/O
-    # doesn't block worker threads that are waiting on dependency ordering
-    # during the install phase.
-    def pre_download_gems(specs, jobs)
-      remote_specs = specs.select(&:remote)
-      return if remote_specs.empty?
-
-      worker = Worker.new(jobs, "Downloader", lambda {|spec, _worker_num|
-        spec.source.pre_download(spec)
-        spec
-      })
-      remote_specs.each {|s| worker.enq(s) }
-      remote_specs.size.times { worker.deq }
-    ensure
-      worker&.stop
     end
 
     def installation_parallelization

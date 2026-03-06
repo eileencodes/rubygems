@@ -6,7 +6,7 @@ require_relative "gem_installer"
 module Bundler
   class ParallelInstaller
     class SpecInstallation
-      attr_accessor :spec, :name, :full_name, :post_install_message, :state, :error
+      attr_accessor :spec, :name, :full_name, :post_install_message, :state, :error, :downloaded
       def initialize(spec)
         @spec = spec
         @name = spec.name
@@ -14,6 +14,7 @@ module Bundler
         @state = :none
         @post_install_message = ""
         @error = nil
+        @downloaded = spec.respond_to?(:remote) ? !spec.remote : true
       end
 
       def installed?
@@ -29,7 +30,7 @@ module Bundler
       end
 
       def ready_to_enqueue?
-        state == :none
+        state == :none && downloaded
       end
 
       def has_post_install_message?
@@ -80,6 +81,7 @@ module Bundler
       end if skip
       @spec_set = all_specs
       @rake = @specs.find {|s| s.name == "rake" unless s.installed? }
+      @remote_specs = @specs.select {|s| s.spec.respond_to?(:remote) && s.spec.remote }
     end
 
     def call
@@ -97,7 +99,8 @@ module Bundler
       handle_error if failed_specs.any?
       @specs
     ensure
-      worker_pool&.stop
+      @download_pool&.stop
+      @worker_pool&.stop
     end
 
     private
@@ -107,11 +110,27 @@ module Bundler
     end
 
     def install_with_worker
+      # Enqueue all remote specs for downloading (no dependency ordering needed)
+      @remote_specs.each {|s| download_pool.enq(s) }
+
+      # Seed installs — non-remote specs with met deps go immediately
       enqueue_specs
-      process_specs until finished_installing?
+
+      # Pipeline loop: process completed downloads and installs from the shared queue
+      until finished_installing?
+        result = shared_response_queue.deq
+        raise result.exception if result.is_a?(Bundler::Worker::WrappedException)
+        enqueue_specs
+      end
     end
 
     def install_serially
+      # For serial installs, download all remote specs first
+      @remote_specs.each do |spec_install|
+        spec_install.spec.source.pre_download(spec_install.spec)
+        spec_install.downloaded = true
+      end
+
       until finished_installing?
         raise "failed to find a spec to enqueue while installing serially" unless spec_install = @specs.find(&:ready_to_enqueue?)
         spec_install.state = :enqueued
@@ -119,10 +138,22 @@ module Bundler
       end
     end
 
+    def shared_response_queue
+      @shared_response_queue ||= Thread::Queue.new
+    end
+
     def worker_pool
-      @worker_pool ||= Bundler::Worker.new @size, "Parallel Installer", lambda {|spec_install, worker_num|
+      @worker_pool ||= Bundler::Worker.new(@size, "Parallel Installer", lambda {|spec_install, worker_num|
         do_install(spec_install, worker_num)
-      }
+      }, response_queue: shared_response_queue)
+    end
+
+    def download_pool
+      @download_pool ||= Bundler::Worker.new(@size, "Downloader", lambda {|spec_install, _worker_num|
+        spec_install.spec.source.pre_download(spec_install.spec)
+        spec_install.downloaded = true
+        spec_install
+      }, response_queue: shared_response_queue)
     end
 
     def do_install(spec_install, worker_num)
@@ -140,16 +171,6 @@ module Bundler
       end
       Plugin.hook(Plugin::Events::GEM_AFTER_INSTALL, spec_install)
       spec_install
-    end
-
-    # Dequeue a spec and save its post-install message and then enqueue the
-    # remaining specs.
-    # Some specs might've had to wait til this spec was installed to be
-    # processed so the call to `enqueue_specs` is important after every
-    # dequeue.
-    def process_specs
-      worker_pool.deq
-      enqueue_specs
     end
 
     def finished_installing?

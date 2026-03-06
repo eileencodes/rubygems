@@ -19,10 +19,10 @@ module Bundler
     # @param size [Integer] Size of pool
     # @param name [String] name the name of the worker
     # @param func [Proc] job to run in inside the worker pool
-    def initialize(size, name, func)
+    def initialize(size, name, func, response_queue: nil)
       @name = name
       @request_queue = Thread::Queue.new
-      @response_queue = Thread::Queue.new
+      @response_queue = response_queue || Thread::Queue.new
       @func = func
       @size = size
       @threads = nil
