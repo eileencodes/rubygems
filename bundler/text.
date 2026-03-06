@@ -1,0 +1,4 @@
+BUNDLE_PATH => /tmp/bundler-bench/rails/vendor/bundle, BUNDLE_GEMFILE => /tmp/bundler-bench/rails/Gemfile, BUNDLE_JOBS => 8, BUNDLE_RETRY => 3, BUNDLE_FROZEN => nil, BUNDLE_DISABLE_SHARED_GEMS => true, BUNDLE_NO_COLOR => 1, XDG_CACHE_HOME => /tmp/bundler-bench/.caches/master/xdg, BUNDLE_USER_CACHE => /tmp/bundler-bench/.caches/master/bundle_cache, BUNDLE_USER_HOME => /tmp/bundler-bench/.caches/master/bundle_home, BUNDLER_IO_TRACE => nil}, /Users/eileencodes/.rubies/ruby-4.0.1/bin/ruby -I/Users/eileencodes/src/github.com/open_source/rubygems/lib -I/Users/eileencodes/src/github.com/open_source/rubygems/bundler/lib /Users/eileencodes/src/github.com/open_source/rubygems/bundler/exe/bundle install,
+
+
+/tmp/bundler-bench/rails

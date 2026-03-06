@@ -21,6 +21,8 @@ module Bundler
         @allow_local = options["allow_local"] || false
         @prefer_local = false
         @checksum_store = Checksum::Store.new
+        @pre_unpacked = {}
+        @pre_unpacked_mutex = Mutex.new
 
         Array(options["remotes"]).reverse_each {|r| add_remote(r) }
 
@@ -178,6 +180,8 @@ module Bundler
 
         require_relative "../rubygems_gem_installer"
 
+        pre_extracted = @pre_unpacked_mutex.synchronize { @pre_unpacked[spec.full_name] }
+
         installer = Bundler::RubyGemsGemInstaller.at(
           path,
           security_policy: Bundler.rubygems.security_policies[Bundler.settings["trust-policy"]],
@@ -187,7 +191,8 @@ module Bundler
           wrappers: true,
           env_shebang: true,
           build_args: options[:build_args],
-          bundler_extension_cache_path: extension_cache_path(spec)
+          bundler_extension_cache_path: extension_cache_path(spec),
+          bundler_pre_extracted: pre_extracted
         )
 
         if spec.remote
@@ -331,6 +336,30 @@ module Bundler
       # installation_missing?.
       def pre_download(spec)
         fetch_gem(spec)
+      end
+
+      # Extracts the gem files for the given spec without installing.
+      # Called during the pre-unpack phase so all gems can be extracted
+      # in parallel before the dependency-ordered install phase begins.
+      def pre_unpack(spec)
+        return if installed?(spec)
+
+        path = fetch_gem_if_possible(spec)
+        return unless path
+
+        require_relative "../rubygems_gem_installer"
+
+        installer = Bundler::RubyGemsGemInstaller.at(
+          path,
+          install_dir: rubygems_dir.to_s,
+          bin_dir: Bundler.system_bindir.to_s,
+          ignore_dependencies: true,
+          wrappers: true,
+          env_shebang: true,
+        )
+        installer.extract_only
+
+        @pre_unpacked_mutex.synchronize { @pre_unpacked[spec.full_name] = true }
       end
 
       protected

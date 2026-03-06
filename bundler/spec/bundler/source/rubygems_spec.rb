@@ -109,4 +109,63 @@ RSpec.describe Bundler::Source::Rubygems do
       expect(stdout).to include("Using foo")
     end
   end
+
+  describe "#pre_unpack" do
+    it "extracts gems before the install phase" do
+      build_repo4 do
+        build_gem "mygem_a", "1.0.0"
+        build_gem "mygem_b", "1.0.0" do |s|
+          s.add_dependency "mygem_a", "1.0.0"
+        end
+      end
+
+      stdout = install_gemfile(<<~G, verbose: true)
+        source "https://gem.repo4"
+        gem "mygem_b"
+      G
+
+      # All gems should be fetched and installed successfully
+      expect(stdout).to include("Installing mygem_a 1.0.0")
+      expect(stdout).to include("Installing mygem_b 1.0.0")
+    end
+
+    it "installs gems with native extensions correctly after pre-unpack" do
+      build_repo4 do
+        build_gem "native_gem", "1.0.0" do |s|
+          s.extensions << "ext/extconf.rb"
+          s.write "ext/extconf.rb", <<-RUBY
+            require "mkmf"
+            create_makefile("native_gem")
+          RUBY
+          s.write "ext/native_gem.c", "void Init_native_gem(void) {}"
+        end
+      end
+
+      stdout = install_gemfile(<<~G, verbose: true)
+        source "https://gem.repo4"
+        gem "native_gem"
+      G
+
+      expect(stdout).to include("Installing native_gem 1.0.0 with native extensions")
+    end
+
+    it "does not re-extract gems that are already installed" do
+      build_repo4 do
+        build_gem "mygem", "1.0.0"
+      end
+
+      install_gemfile <<~G
+        source "https://gem.repo4"
+        gem "mygem"
+      G
+
+      stdout = install_gemfile(<<~G, verbose: true)
+        source "https://gem.repo4"
+        gem "mygem"
+      G
+
+      expect(stdout).not_to include("Installing mygem")
+      expect(stdout).to include("Using mygem")
+    end
+  end
 end

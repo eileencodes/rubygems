@@ -8,16 +8,12 @@ module Bundler
       # Bundler needs to install gems regardless of binstub overwriting
     end
 
-    def install
-      pre_install_checks
-
-      run_pre_install_hooks
-
-      spec.loaded_from = spec_file
-
-      # Completely remove any previous gem files
+    # Extracts the gem files to gem_dir without performing any
+    # installation steps (extensions, bin stubs, etc). Called
+    # during the pre-unpack phase so extraction can happen in
+    # parallel across all gems before dependency-ordered install.
+    def extract_only
       strict_rm_rf gem_dir
-      strict_rm_rf spec.extension_dir
 
       SharedHelpers.filesystem_access(gem_dir, :create) do
         FileUtils.mkdir_p gem_dir, mode: 0o755
@@ -26,6 +22,29 @@ module Bundler
       SharedHelpers.filesystem_access(gem_dir, :write) do
         extract_files
       end
+    end
+
+    def install
+      pre_install_checks
+
+      run_pre_install_hooks
+
+      spec.loaded_from = spec_file
+
+      unless options[:bundler_pre_extracted]
+        # Completely remove any previous gem files
+        strict_rm_rf gem_dir
+
+        SharedHelpers.filesystem_access(gem_dir, :create) do
+          FileUtils.mkdir_p gem_dir, mode: 0o755
+        end
+
+        SharedHelpers.filesystem_access(gem_dir, :write) do
+          extract_files
+        end
+      end
+
+      strict_rm_rf spec.extension_dir
 
       build_extensions if spec.extensions.any?
       write_build_info_file
