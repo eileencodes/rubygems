@@ -324,9 +324,13 @@ module Bundler
       # installing it. Called during the pre-download phase to decouple
       # downloading from installation, allowing all gems to be fetched
       # in parallel before installation begins.
+      #
+      # Skips the installed? check since fetch_gem already short-circuits
+      # when the .gem file exists in cache, which is cheaper than
+      # querying installed_specs and hitting the filesystem for
+      # installation_missing?.
       def pre_download(spec)
-        return if installed?(spec)
-        fetch_gem_if_possible(spec)
+        fetch_gem(spec)
       end
 
       protected
