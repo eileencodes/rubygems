@@ -91,6 +91,19 @@ module Bundler
       names
     end
 
+    # Returns a Set of [name, version] pairs for all specs in this index.
+    # Used to filter binary server specs to only those matching the primary source.
+    def name_version_pairs
+      require "set"
+      pairs = Set.new
+      specs.each do |name, spec_hash|
+        spec_hash.each_value do |spec|
+          pairs.add([name, spec.version])
+        end
+      end
+      pairs
+    end
+
     def unmet_dependency_names
       dependency_names.select do |name|
         search(name).empty?

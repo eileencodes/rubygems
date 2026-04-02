@@ -33,4 +33,32 @@ RSpec.describe Bundler::Index do
       expect(subject.dependency_names).not_to include("b")
     end
   end
+
+  describe "#name_version_pairs" do
+    let(:specs) do
+      [
+        *build_spec("foo", "1.0.0"),
+        *build_spec("foo", "1.0.0", "x86_64-linux"),
+        *build_spec("bar", "2.0.0"),
+      ]
+    end
+
+    it "returns a Set of [name, version] pairs" do
+      pairs = subject.name_version_pairs
+      expect(pairs).to be_a(Set)
+      expect(pairs).to include(["foo", Gem::Version.new("1.0.0")])
+      expect(pairs).to include(["bar", Gem::Version.new("2.0.0")])
+    end
+
+    it "deduplicates across platforms" do
+      pairs = subject.name_version_pairs
+      foo_pairs = pairs.select {|name, _| name == "foo" }
+      expect(foo_pairs.size).to eq 1
+    end
+
+    it "returns empty set for empty index" do
+      empty_index = described_class.build {|i| }
+      expect(empty_index.name_version_pairs).to be_empty
+    end
+  end
 end

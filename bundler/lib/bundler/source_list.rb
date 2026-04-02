@@ -59,8 +59,9 @@ module Bundler
       add_source_to_list Plugin.source(source).new(options), @plugin_sources
     end
 
-    def add_global_rubygems_remote(uri)
+    def add_global_rubygems_remote(uri, binaries: [])
       global_rubygems_source.add_remote(uri)
+      binaries.each {|b| global_rubygems_source.add_binary_remote(b) }
       global_rubygems_source
     end
 

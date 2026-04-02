@@ -130,9 +130,12 @@ module Bundler
         source_opts = options.merge("uri" => source)
         with_source(@sources.add_plugin_source(options["type"], source_opts), &blk)
       elsif block_given?
-        with_source(@sources.add_rubygems_source("remotes" => source), &blk)
+        with_source(@sources.add_rubygems_source(
+          "remotes" => source,
+          "binaries" => Array(options["binaries"])
+        ), &blk)
       else
-        @sources.add_global_rubygems_remote(source)
+        @sources.add_global_rubygems_remote(source, binaries: Array(options["binaries"]))
       end
     end
 

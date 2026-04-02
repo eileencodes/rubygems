@@ -12,10 +12,12 @@ module Bundler
       REQUIRE_MUTEX = Mutex.new
 
       attr_accessor :remotes
+      attr_reader :binary_remotes
 
       def initialize(options = {})
         @options = options
         @remotes = []
+        @binary_remotes = []
         @dependency_names = []
         @allow_remote = false
         @allow_cached = false
@@ -26,8 +28,12 @@ module Bundler
         @gem_installers_mutex = Mutex.new
 
         Array(options["remotes"]).reverse_each {|r| add_remote(r) }
+        Array(options["binaries"]).reverse_each {|b| add_binary_remote(b) }
 
-        @lockfile_remotes = @remotes if options["from_lockfile"]
+        if options["from_lockfile"]
+          @lockfile_remotes = @remotes
+          @lockfile_binary_remotes = @binary_remotes
+        end
       end
 
       def caches
@@ -73,11 +79,13 @@ module Bundler
       end
 
       def hash
-        @remotes.hash
+        [@remotes, @binary_remotes].hash
       end
 
       def eql?(other)
-        other.is_a?(Rubygems) && other.credless_remotes == credless_remotes
+        other.is_a?(Rubygems) &&
+          other.credless_remotes == credless_remotes &&
+          other.binary_remotes == binary_remotes
       end
 
       alias_method :==, :eql?
@@ -100,11 +108,14 @@ module Bundler
       end
 
       def options
-        { "remotes" => @remotes.map(&:to_s) }
+        opts = { "remotes" => @remotes.map(&:to_s) }
+        opts["binaries"] = @binary_remotes.map(&:to_s) if @binary_remotes.any?
+        opts
       end
 
       def self.from_lock(options)
         options["remotes"] = Array(options.delete("remote")).reverse
+        options["binaries"] = Array(options.delete("binary")).reverse
         new(options.merge("from_lockfile" => true))
       end
 
@@ -112,6 +123,9 @@ module Bundler
         out = String.new("GEM\n")
         lockfile_remotes.reverse_each do |remote|
           out << "  remote: #{remote}\n"
+        end
+        lockfile_binary_remotes.reverse_each do |binary|
+          out << "  binary: #{binary}\n"
         end
         out << "  specs:\n"
       end
@@ -246,6 +260,11 @@ module Bundler
       def add_remote(source)
         uri = normalize_uri(source)
         @remotes.unshift(uri) unless @remotes.include?(uri)
+      end
+
+      def add_binary_remote(source)
+        uri = normalize_uri(source)
+        @binary_remotes.unshift(uri) unless @binary_remotes.include?(uri)
       end
 
       def spec_names
@@ -399,6 +418,8 @@ module Bundler
           else
             fetch_names(fetchers, nil, idx)
           end
+
+          fetch_binary_specs(idx) if @binary_remotes.any? && @allow_remote
         end
       end
 
@@ -413,6 +434,44 @@ module Bundler
             index.use f.specs_with_retry(nil, self)
           end
         end
+      end
+
+      def fetch_binary_specs(idx)
+        allowed_pairs = idx.name_version_pairs
+
+        binary_fetchers.each do |fetcher|
+          begin
+            Bundler.ui.info "Fetching binary gem metadata from #{URICredentialsFilter.credential_filtered_uri(fetcher.uri)}", Bundler.ui.debug?
+            binary_index = fetcher.specs_with_retry(dependency_names, self)
+            Bundler.ui.info "" unless Bundler.ui.debug?
+
+            binary_index.each do |spec|
+              if allowed_pairs.include?([spec.name, spec.version])
+                idx << spec
+              else
+                Bundler.ui.debug "Skipping #{spec.full_name} from binary source #{URICredentialsFilter.credential_filtered_uri(fetcher.uri)} (not in parent source)"
+              end
+            end
+          rescue Bundler::Fetcher::FallbackError, Bundler::HTTPError => e
+            Bundler.ui.warn "Binary source #{URICredentialsFilter.credential_filtered_uri(fetcher.uri)} is unreachable: #{e.message}. Falling back to source compilation."
+          end
+        end
+      end
+
+      def binary_remote_fetchers
+        @binary_remote_fetchers ||= @binary_remotes.to_h do |uri|
+          remote = Source::Rubygems::Remote.new(uri)
+          [remote, Bundler::Fetcher.new(remote)]
+        end.freeze
+      end
+
+      def binary_fetchers
+        @binary_fetchers ||= binary_remote_fetchers.values.freeze
+      end
+
+      # Combined lookup for download_gem — includes both primary and binary fetchers
+      def all_remote_fetchers
+        @all_remote_fetchers ||= remote_fetchers.merge(binary_remote_fetchers).freeze
       end
 
       def fetch_gem_if_possible(spec, previous_spec = nil)
@@ -460,6 +519,10 @@ module Bundler
         @lockfile_remotes || credless_remotes
       end
 
+      def lockfile_binary_remotes
+        @lockfile_binary_remotes || @binary_remotes.map(&method(:remove_auth))
+      end
+
       # Checks if the requested spec exists in the global cache. If it does,
       # we copy it to the download path, and if it does not, we download it.
       #
@@ -475,7 +538,7 @@ module Bundler
       def download_gem(spec, download_cache_path, previous_spec = nil)
         uri = spec.remote.uri
         Bundler.ui.confirm("Fetching #{version_message(spec, previous_spec)}")
-        gem_remote_fetcher = remote_fetchers.fetch(spec.remote).gem_remote_fetcher
+        gem_remote_fetcher = all_remote_fetchers.fetch(spec.remote).gem_remote_fetcher
 
         Gem.time("Downloaded #{spec.name} in", 0, true) do
           Bundler.rubygems.download_gem(spec, uri, download_cache_path, gem_remote_fetcher)

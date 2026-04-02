@@ -129,6 +129,38 @@ RSpec.describe Bundler::SourceList do
           Gem::URI("https://rubygems.org/"),
         ]
       end
+
+      it "adds binary remotes to the global source" do
+        source_list.add_global_rubygems_remote(
+          "https://rubygems.org",
+          binaries: ["https://build-farm.example.com"]
+        )
+        expect(returned_source.binary_remotes).to eq [
+          Gem::URI("https://build-farm.example.com/"),
+        ]
+      end
+
+      it "adds multiple binary remotes to the global source" do
+        source_list.add_global_rubygems_remote(
+          "https://rubygems.org",
+          binaries: ["https://first.example.com", "https://second.example.com"]
+        )
+        expect(returned_source.binary_remotes.size).to eq 2
+      end
+
+      it "does not add binary remotes when none are provided" do
+        expect(returned_source.binary_remotes).to eq []
+      end
+    end
+
+    describe "#add_rubygems_source with binaries" do
+      it "passes binary remotes to the new source" do
+        source = source_list.add_rubygems_source(
+          "remotes" => ["https://rubygems.org"],
+          "binaries" => ["https://build-farm.example.com"]
+        )
+        expect(source.binary_remotes).to eq [Gem::URI("https://build-farm.example.com/")]
+      end
     end
 
     describe "#add_plugin_source" do
