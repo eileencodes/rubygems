@@ -97,19 +97,11 @@ RSpec.describe Bundler::Source::Rubygems do
   end
 
   describe "#options" do
-    it "includes binaries when binary remotes are present" do
+    it "does not include binaries" do
       source = described_class.new(
         "remotes" => ["https://rubygems.org"],
         "binaries" => ["https://build-farm.example.com"]
       )
-      expect(source.options).to eq(
-        "remotes" => ["https://rubygems.org/"],
-        "binaries" => ["https://build-farm.example.com/"]
-      )
-    end
-
-    it "omits binaries when no binary remotes are present" do
-      source = described_class.new("remotes" => ["https://rubygems.org"])
       expect(source.options).to eq("remotes" => ["https://rubygems.org/"])
     end
   end

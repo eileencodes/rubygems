@@ -108,9 +108,7 @@ module Bundler
       end
 
       def options
-        opts = { "remotes" => @remotes.map(&:to_s) }
-        opts["binaries"] = @binary_remotes.map(&:to_s) if @binary_remotes.any?
-        opts
+        { "remotes" => @remotes.map(&:to_s) }
       end
 
       def self.from_lock(options)

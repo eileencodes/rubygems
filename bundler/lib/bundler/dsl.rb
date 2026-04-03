@@ -116,6 +116,7 @@ module Bundler
       options = args.last.is_a?(Hash) ? args.pop.dup : {}
       options = normalize_hash(options)
       source = normalize_source(source)
+      binaries = options["binaries"]
 
       if options.key?("type")
         options["type"] = options["type"].to_s
@@ -132,10 +133,10 @@ module Bundler
       elsif block_given?
         with_source(@sources.add_rubygems_source(
           "remotes" => source,
-          "binaries" => Array(options["binaries"])
+          "binaries" => binaries
         ), &blk)
       else
-        @sources.add_global_rubygems_remote(source, binaries: Array(options["binaries"]))
+        @sources.add_global_rubygems_remote(source, binaries: binaries)
       end
     end
 
