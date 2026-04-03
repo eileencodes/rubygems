@@ -459,7 +459,11 @@ module Bundler
                 next
               end
 
+              Bundler.ui.debug "BINARY TRACE: Adding #{spec.full_name} (remote=#{spec.remote}) to index"
               idx << spec
+              # Verify it's actually in the index now
+              found = idx.search([spec.name, spec.version])
+              Bundler.ui.debug "BINARY TRACE: After add, index has: #{found.map { |s| "#{s.full_name} remote=#{s.remote}" }.join(", ")}"
             end
           rescue Bundler::Fetcher::AuthenticationRequiredError, Bundler::Fetcher::BadAuthenticationError, Bundler::Fetcher::AuthenticationForbiddenError => e
             Bundler.ui.warn "Binary source #{filtered_uri} requires authentication: #{e.message}. Falling back to source compilation."
@@ -553,6 +557,7 @@ module Bundler
       #
       def download_gem(spec, download_cache_path, previous_spec = nil)
         uri = spec.remote.uri
+        Bundler.ui.debug "BINARY TRACE: download_gem #{spec.full_name} from #{uri} (remote=#{spec.remote})"
         Bundler.ui.confirm("Fetching #{version_message(spec, previous_spec)}")
         gem_remote_fetcher = all_remote_fetchers.fetch(spec.remote).gem_remote_fetcher
 

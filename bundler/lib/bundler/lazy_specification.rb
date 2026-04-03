@@ -137,9 +137,17 @@ module Bundler
     def materialize_for_installation
       source.local!
 
+      Bundler.ui.debug "BINARY TRACE: materialize_for_installation #{full_name} use_exact=#{use_exact_resolved_specifications?} platform=#{platform}"
+
       if use_exact_resolved_specifications?
-        spec = materialize(self) {|specs| choose_compatible(specs, fallback_to_non_installable: false) }
-        return spec if spec
+        spec = materialize(self) {|specs|
+          Bundler.ui.debug "BINARY TRACE: exact match candidates for #{full_name}: #{specs.map { |s| "#{s.full_name} remote=#{s.respond_to?(:remote) ? s.remote : 'N/A'}" }.join(", ")}"
+          choose_compatible(specs, fallback_to_non_installable: false)
+        }
+        if spec
+          Bundler.ui.debug "BINARY TRACE: exact match result: #{spec.full_name} remote=#{spec.respond_to?(:remote) ? spec.remote : 'N/A'}"
+          return spec
+        end
 
         # Exact spec is incompatible; in frozen mode, try to find a compatible platform variant
         # In non-frozen mode, return nil to trigger re-resolution and lockfile update
@@ -147,7 +155,12 @@ module Bundler
           materialize([name, version]) {|specs| resolve_best_platform(specs) }
         end
       else
-        materialize([name, version]) {|specs| resolve_best_platform(specs) }
+        materialize([name, version]) {|specs|
+          Bundler.ui.debug "BINARY TRACE: best_platform candidates for #{full_name}: #{specs.map { |s| "#{s.full_name} remote=#{s.respond_to?(:remote) ? s.remote : 'N/A'}" }.join(", ")}"
+          result = resolve_best_platform(specs)
+          Bundler.ui.debug "BINARY TRACE: best_platform result: #{result&.full_name} remote=#{result.respond_to?(:remote) ? result.remote : 'N/A'}" if result
+          result
+        }
       end
     end
 
