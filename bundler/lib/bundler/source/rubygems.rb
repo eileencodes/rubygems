@@ -343,6 +343,10 @@ module Bundler
         remotes.map(&method(:remove_auth))
       end
 
+      def credless_binary_remotes
+        binary_remotes.map(&method(:remove_auth))
+      end
+
       def cached_gem(spec)
         global_cache_path = download_cache_path(spec)
         caches << global_cache_path if global_cache_path
@@ -437,23 +441,37 @@ module Bundler
       end
 
       def fetch_binary_specs(idx)
-        allowed_pairs = idx.name_version_pairs
+        local_platform = Bundler.local_platform
 
         binary_fetchers.each do |fetcher|
+          filtered_uri = URICredentialsFilter.credential_filtered_uri(fetcher.uri)
           begin
-            Bundler.ui.info "Fetching binary gem metadata from #{URICredentialsFilter.credential_filtered_uri(fetcher.uri)}", Bundler.ui.debug?
+            Bundler.ui.info "Fetching binary gem metadata from #{filtered_uri}", Bundler.ui.debug?
             binary_index = fetcher.specs_with_retry(dependency_names, self)
             Bundler.ui.info "" unless Bundler.ui.debug?
 
             binary_index.each do |spec|
-              if allowed_pairs.include?([spec.name, spec.version])
-                idx << spec
-              else
-                Bundler.ui.debug "Skipping #{spec.full_name} from binary source #{URICredentialsFilter.credential_filtered_uri(fetcher.uri)} (not in parent source)"
+              unless idx.search([spec.name, spec.version]).any?
+                Bundler.ui.debug "Skipping #{spec.full_name} from binary source #{filtered_uri} (not in parent source)"
+                next
               end
+
+              unless spec.installable_on_platform?(local_platform)
+                Bundler.ui.debug "Skipping #{spec.full_name} from binary source #{filtered_uri} (platform #{spec.platform} not compatible with #{local_platform})"
+                next
+              end
+
+              idx << spec
             end
+          rescue Bundler::Fetcher::AuthenticationRequiredError, Bundler::Fetcher::BadAuthenticationError, Bundler::Fetcher::AuthenticationForbiddenError => e
+            Bundler.ui.warn "Binary source #{filtered_uri} requires authentication: #{e.message}. Falling back to source compilation."
+            Bundler.ui.debug "#{e.class}: #{e.message}"
+          rescue Bundler::Fetcher::CertificateFailureError, Bundler::Fetcher::SSLError => e
+            Bundler.ui.warn "Binary source #{filtered_uri} has SSL errors: #{e.message}. Falling back to source compilation."
+            Bundler.ui.debug "#{e.class}: #{e.message}"
           rescue Bundler::Fetcher::FallbackError, Bundler::HTTPError => e
-            Bundler.ui.warn "Binary source #{URICredentialsFilter.credential_filtered_uri(fetcher.uri)} is unreachable: #{e.message}. Falling back to source compilation."
+            Bundler.ui.warn "Binary source #{filtered_uri} is unreachable: #{e.message}. Falling back to source compilation."
+            Bundler.ui.debug "#{e.class}: #{e.message}"
           end
         end
       end
@@ -520,7 +538,7 @@ module Bundler
       end
 
       def lockfile_binary_remotes
-        @lockfile_binary_remotes || @binary_remotes.map(&method(:remove_auth))
+        @lockfile_binary_remotes || credless_binary_remotes
       end
 
       # Checks if the requested spec exists in the global cache. If it does,
